@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="rfid_scan.RFID_button" t-inherit="web.FormView" t-inherit-mode="primary" owl="1">
+        <xpath expr="//t[@t-set-slot='control-panel-additional-actions']" position="inside">
+            <t>
+                <button class="btn btn-info ms-1" id="rfid_btn" type="button" t-on-click="()=>this.onClick()">
+                    <i class="fa fa-credit-card-alt" /> Xác nhận đơn hàng
+                </button>
+            </t>
+           
+        </xpath>
+    </t>
+</templates>
