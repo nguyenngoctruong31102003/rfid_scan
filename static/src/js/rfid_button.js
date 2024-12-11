@@ -41,10 +41,67 @@ export class ButtonFormController extends FormController {
     } else if (result.code >= 200 && result.code < 300) {
       if (result.code == 200) {
         try {
-          const response = await this.rpc("/api/itemtracking.contacts", {
+          // Kiểm tra tính ràng buộc dữ liệu trước khi tiếp tục
+          // 1. Kiểm tra thông tin sản phẩm
+          const checkProductInfoResponse = await this.rpc(
+            "/api/logistic.contacts/checkProductInfo",
+            {
+              product_name: this.model.root.data.product_name,
+              product_weight: this.model.root.data.product_weight,
+              product_lengh: this.model.root.data.product_lengh,
+              product_width: this.model.root.data.product_width,
+              product_height: this.model.root.data.product_height,
+            }
+          );
+
+          if (checkProductInfoResponse.status === "error") {
+            this.showNotification(
+              checkProductInfoResponse.message,
+              "THÔNG BÁO",
+              "danger"
+            );
+            return;
+          }
+
+          // 2. Kiểm tra người dùng
+          // Nếu thông tin hợp lệ, tiếp tục Quản lý người dùng
+          const userManagerResponse = await this.rpc(
+            "/api/logistic.contacts/userManager",
+            {
+              sender_name: this.model.root.data.sender_name,
+              sender_mobile: this.model.root.data.sender_mobile,
+              sender_email: this.model.root.data.sender_email,
+              sender_street: this.model.root.data.sender_street,
+              sender_city: this.model.root.data.sender_city,
+              sender_country_id: this.model.root.data.sender_country_id,
+              // ----------------------------------------------------
+              receiver_name: this.model.root.data.receiver_name,
+              receiver_mobile: this.model.root.data.receiver_mobile,
+              receiver_email: this.model.root.data.receiver_email,
+              receiver_street: this.model.root.data.receiver_street,
+              receiver_city: this.model.root.data.receiver_city,
+              receiver_country_id: this.model.root.data.receiver_country_id,
+            }
+          );
+
+          if (userManagerResponse.status === "error") {
+            this.showNotification(
+              userManagerResponse.message,
+              "THÔNG BÁO",
+              "danger"
+            );
+            return;
+          }
+
+          const response = await this.rpc("/api/logistic.contacts", {
             order_code: result.tid,
             id: this.props.resId,
           });
+
+          if (response.status === "error") {
+            this.showNotification(response.message, "THÔNG BÁO", "danger");
+            return;
+          }
 
           // Cập nhật trạng thái quét thẻ
           this.state.scanned = true;
@@ -54,23 +111,7 @@ export class ButtonFormController extends FormController {
 
           // Mở form popup khi ấn Action "Xác Nhận Đơn Hàng"
           // Start PopUp
-          let data = await this.orm.searchRead(
-            "ir.model.data",
-            [["name", "=", "view_itemtracking_popup_form"]],
-            ["res_id"]
-          );
-
-          let action = {
-            type: "ir.actions.act_window",
-            name: "Xác Nhận Đơn Hàng",
-            res_model: "itemtracking.contacts",
-            domain: [],
-            view_type: "form",
-            views: [[data[0].res_id, "form"]],
-            view_mode: "form",
-            target: "new",
-            res_id: this.props.resId,
-          };
+          this.openPopupForm();
           // End PopUp
 
           this.env.services.action.doAction(action, {
@@ -78,11 +119,7 @@ export class ButtonFormController extends FormController {
           });
         } catch (error) {
           console.log(error);
-          this.showNotification(
-            "API chưa được tạo hoặc, Server bị lỗi!!",
-            "THÔNG BÁO",
-            "danger"
-          );
+          this.showNotification("Lỗi xử lý đơn hàng!!", "THÔNG BÁO", "danger");
         }
       }
       return;
@@ -98,7 +135,7 @@ export class ButtonFormController extends FormController {
 
     // Nếu đơn hàng đã quét, gọi API để lấy thông tin lại và hiện popup
     if (this.state.scanned) {
-      this.rpc("/api/itemtracking.contacts", {
+      this.rpc("/api/logistic.contacts", {
         id: this.props.resId,
       })
         .then((response) => {
@@ -106,7 +143,7 @@ export class ButtonFormController extends FormController {
             this.state.scannedOrder = response.data.order_code;
 
             this.showNotification(
-              `Đơn hàng đã quét: ${response.data.order_code}`,
+              `Lấy Mã Đơn Hàng Thành Công: ${response.data.order_code}`,
               "THÔNG BÁO",
               "info"
             );
@@ -147,42 +184,70 @@ export class ButtonFormController extends FormController {
       return;
     }
 
-    try {
-      //Gửi lệnh quét thẻ
-      if (this.webSocket.isConnect() == 1) {
-        this.webSocket.send("quet the tid|false");
-      }
-    } catch (error) {
-      setTimeout(() => {
-        if (document.getElementById("rfid_btn") != undefined)
-          document.getElementById("rfid_btn").disabled = false;
-      }, 4000);
-    }
+    // Kiểm tra thông tin sản phẩm
+    this.rpc("/api/logistic.contacts/checkProductInfo", {
+      product_name: this.model.root.data.product_name,
+      product_weight: this.model.root.data.product_weight,
+      product_lengh: this.model.root.data.product_lengh,
+      product_width: this.model.root.data.product_width,
+      product_height: this.model.root.data.product_height,
+    })
+      .then((productResponse) => {
+        if (productResponse.status === "error") {
+          this.showNotification(productResponse.message, "THÔNG BÁO", "danger");
+          throw new Error("Thông tin sản phẩm không hợp lệ");
+        }
+        // Nếu thông tin sản phẩm hợp lệ, kiểm tra người dùng
+        return this.rpc("/api/logistic.contacts/userManager", {
+          sender_mobile: this.model.root.data.sender_mobile,
+          receiver_mobile: this.model.root.data.receiver_mobile,
+        });
+      })
+
+      .then((userResponse) => {
+        if (userResponse.status === "error") {
+          this.showNotification(userResponse.message, "THÔNG BÁO", "danger");
+          throw new Error("Người dùng không hợp lệ");
+        }
+        // Nếu người dùng hợp lệ, gửi lệnh quét thẻ
+        if (this.webSocket.isConnect() == 1) {
+          this.webSocket.send("quet the tid|false");
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        setTimeout(() => {
+          if (document.getElementById("rfid_btn") != undefined)
+            document.getElementById("rfid_btn").disabled = false;
+        }, 4000);
+      });
   }
 
   // Hàm mở popup form
   openPopupForm() {
-    this.orm.searchRead(
-      "ir.model.data",
-      [["name", "=", "view_itemtracking_popup_form"]],
-      ["res_id"]
-    ).then((data) => {
-      let action = {
-        type: "ir.actions.act_window",
-        name: "Xác Nhận Đơn Hàng",
-        res_model: "itemtracking.contacts",
-        domain: [],
-        view_type: "form",
-        views: [[data[0].res_id, "form"]],
-        view_mode: "form",
-        target: "new",
-        res_id: this.props.resId,
-      };
+    this.orm
+      .searchRead(
+        "ir.model.data",
+        [["name", "=", "view_logistic_popup_form"]],
+        ["res_id"]
+      )
+      .then((data) => {
+        let action = {
+          type: "ir.actions.act_window",
+          name: "Xác Nhận Đơn Hàng",
+          res_model: "logistic.contacts",
+          domain: [],
+          view_type: "form",
+          views: [[data[0].res_id, "form"]],
+          view_mode: "form",
+          target: "new",
+          res_id: this.props.resId,
+        };
 
-      this.env.services.action.doAction(action, {
-        onClose: (result) => {},
+        this.env.services.action.doAction(action, {
+          onClose: (result) => {},
+        });
       });
-    });
   }
 
   showAlerDialog(title, content) {

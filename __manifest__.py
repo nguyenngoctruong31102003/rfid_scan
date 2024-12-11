@@ -9,7 +9,7 @@
     # Độ ưu tiên module trong list module
     # Số càng nhỏ, độ ưu tiên càng cao
     #### Chấp nhận số âm
-    'sequence': 5,
+    'sequence': 1,
 
     # Mô tả module
     'summary': 'Module này dùng để quét thẻ rfid',
